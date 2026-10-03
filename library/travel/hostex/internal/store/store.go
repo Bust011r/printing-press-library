@@ -6343,6 +6343,22 @@ func CascadeJunctionsFor(resourceType string) []CascadeJunction {
 	return out
 }
 
+// PATCH(hostex-sync-reconcile-skips-partial-windows): ReconcileDateWindow prunes
+// only rows whose JSON date field (the first 10 characters, YYYY-MM-DD) falls in
+// [startDate, endDate]. A windowed sync (Hostex /transactions) can then drop
+// rows deleted upstream inside the window without touching older history.
+// Rows with no parseable date are never victims.
+func (s *Store) ReconcileDateWindow(resourceType, genericDateJSONPath, startDate, endDate string, seenIDs []string, typedTable string, cascades []CascadeJunction) (int, error) {
+	if genericDateJSONPath == "" || startDate == "" || endDate == "" {
+		return 0, fmt.Errorf("reconcile %s: empty date window", resourceType)
+	}
+	return s.reconcileUnseen(resourceType, seenIDs, typedTable, cascades,
+		`SELECT id FROM resources
+		 WHERE resource_type = ?
+		   AND substr(CASE WHEN json_valid(data) THEN json_extract(data, ?) END, 1, 10) BETWEEN ? AND ?`,
+		resourceType, genericDateJSONPath, startDate, endDate)
+}
+
 // ReconcilePartition hard-deletes local rows of resourceType in one partition
 // (rows whose data JSON at genericScopeJSONPath equals scopeValue) whose primary
 // key is NOT in seenIDs. It is the mark-and-sweep half of deletion mirroring;

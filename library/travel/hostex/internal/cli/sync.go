@@ -977,15 +977,29 @@ func syncResource(ctx context.Context, c interface {
 	//   - Incomplete sync (outcome.complete==false) ⇒ SKIP with the recorded
 	//     reason; an abnormal or unprovable end never proves the partition was
 	//     enumerated.
-	// PATCH(hostex-sync-reconcile-skips-partial-windows): a windowed fetch
-	// (the /transactions date window, --since, or any --param/--resource-param
-	// filter) never enumerates the whole local table, so pruning against it
-	// would delete rows that were backfilled outside the window.
+	// PATCH(hostex-sync-reconcile-skips-partial-windows): a windowed fetch never
+	// enumerates the whole local table, so pruning against it would delete rows
+	// that were backfilled outside the window. /transactions is always fetched
+	// through a date window (action time, operator timezone): prune only rows
+	// inside that window. --since or any other --param/--resource-param filter
+	// makes the fetch partial in a way we cannot bound, so reconcile is skipped.
 	partialWindow := false
+	windowStart, windowEnd := "", ""
 	if prune && flatReconcilable {
 		filterProbe := map[string]string{}
 		userParams.applyTo(resource, filterProbe, false)
-		partialWindow = resource == "transactions" || sinceTS != "" || len(filterProbe) > 0
+		if resource == "transactions" {
+			windowStart, windowEnd = txStartDate, txEndDate
+			if v := filterProbe["start_date"]; v != "" {
+				windowStart = v
+			}
+			if v := filterProbe["end_date"]; v != "" {
+				windowEnd = v
+			}
+			delete(filterProbe, "start_date")
+			delete(filterProbe, "end_date")
+		}
+		partialWindow = sinceTS != "" || len(filterProbe) > 0
 		if partialWindow {
 			fmt.Fprintf(syncEvents, `{"event":"reconcile_skipped","resource":"%s","scope":"*","reason":"partial_window"}`+"\n", resource)
 		}
@@ -993,9 +1007,17 @@ func syncResource(ctx context.Context, c interface {
 	if prune && flatReconcilable && !partialWindow {
 		if reconcileMode == "flat_global" {
 			if outcome.complete {
-				deleted, rerr := db.ReconcileAll(
-					resource, seenIDs, reconcileTypedTable(resource), store.CascadeJunctionsFor(resource),
-				)
+				var deleted int
+				var rerr error
+				if windowEnd != "" {
+					deleted, rerr = db.ReconcileDateWindow(
+						resource, "$.action_at", windowStart, windowEnd, seenIDs, reconcileTypedTable(resource), store.CascadeJunctionsFor(resource),
+					)
+				} else {
+					deleted, rerr = db.ReconcileAll(
+						resource, seenIDs, reconcileTypedTable(resource), store.CascadeJunctionsFor(resource),
+					)
+				}
 				if rerr != nil {
 					outcome.complete = false
 					outcome.reason = "reconcile_error"
@@ -1029,7 +1051,7 @@ func syncResource(ctx context.Context, c interface {
 				fmt.Fprintf(syncEvents, `{"event":"reconcile_skipped","resource":"%s","scope":"%s","reason":%q}`+"\n", resource, tenantUUID, outcome.reason)
 			}
 		}
-	} else if prune {
+	} else if prune && !flatReconcilable {
 		// Resources that are not flat-reconcilable (no PK, discriminator, or
 		// unscoped in a tenant-scoped print) cannot be pruned safely. Emit the
 		// decision so --full never implies that unsupported rows were pruned.
