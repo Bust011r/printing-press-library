@@ -1,7 +1,7 @@
 ---
 name: pp-hostex
 description: "Every Hostex v3 operation, plus a local SQLite mirror that answers cross-property questions no single Hostex call can — occupancy gaps, revenue rollups, and guest-message SLA, offline. Trigger phrases: `check my Hostex reservations`, `which guests check in this week`, `update listing prices on Hostex`, `reply to a guest message`, `revenue by property this month`, `use hostex`, `run hostex`."
-author: "Bust011r"
+author: "bust011r"
 license: "Apache-2.0"
 argument-hint: "<command> [args] | install cli|mcp"
 allowed-tools: "Read Bash"
@@ -304,7 +304,7 @@ A read that happens to use POST, so it is safe to run live. Compare the current 
 
 ## Auth Setup
 
-Hostex authenticates with a Hostex-Access-Token header. Create one in the Host Portal (OpenAPI Settings) with read-only or writable scope; tokens do not expire. Run `hostex-pp-cli auth set-token <token>` or export HOSTEX_ACCESS_TOKEN. The server also accepts Authorization: Bearer, but prefer the dedicated header. A read-only token rejects every write with error_code 401.
+Hostex authenticates with a Hostex-Access-Token header. Create one in the Host Portal (OpenAPI Settings) with read-only or writable scope; tokens do not expire. Run `echo "$TOKEN" | hostex-pp-cli auth set-token` (the token is read from stdin) or export HOSTEX_ACCESS_TOKEN. The server also accepts Authorization: Bearer, but prefer the dedicated header. A read-only token rejects every write with error_code 401.
 
 Run `hostex-pp-cli doctor` to verify setup.
 
