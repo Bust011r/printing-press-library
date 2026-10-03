@@ -386,8 +386,15 @@ func whichSingular(s string) string {
 	if len(s) > 3 && strings.HasSuffix(s, "ies") {
 		return strings.TrimSuffix(s, "ies") + "y"
 	}
+	// PATCH(write-commands-document-body-shape-in-cli): "es" is a plural
+	// ending only after s, x, z, ch or sh (classes, taxes, watches); "prices",
+	// "rules" and "changes" are the singular plus "s".
 	if len(s) > 3 && strings.HasSuffix(s, "es") {
-		return strings.TrimSuffix(s, "es")
+		for _, suffix := range []string{"sses", "xes", "zes", "ches", "shes"} {
+			if strings.HasSuffix(s, suffix) {
+				return strings.TrimSuffix(s, "es")
+			}
+		}
 	}
 	if len(s) > 2 && strings.HasSuffix(s, "s") {
 		return strings.TrimSuffix(s, "s")
