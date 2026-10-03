@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 
 	"github.com/mvanhorn/printing-press-library/library/travel/hostex/internal/cliutil"
 	"github.com/mvanhorn/printing-press-library/library/travel/hostex/internal/config"
@@ -165,11 +166,25 @@ func newAuthSetTokenCmd(flags *rootFlags) *cobra.Command {
 		Long: "Save an API token to the credentials file.\n\n" +
 			"The token is read from stdin so it never appears in process arguments or shell history.",
 		Example: "  echo \"$TOKEN\" | hostex-pp-cli auth set-token\n  hostex-pp-cli auth set-token < token-file",
-		Args:    cobra.NoArgs,
+		// PATCH(set-token-positional-compat): earlier releases took the token
+		// as a positional argument. Keep accepting it so existing scripts do
+		// not break, but steer callers to stdin, which keeps the token out of
+		// process listings and shell history.
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			token, err := readSecretFromStdin(cmd.InOrStdin())
-			if err != nil {
-				return authErr(err)
+			var token string
+			var err error
+			if len(args) == 1 {
+				token = strings.TrimSpace(args[0])
+				if token == "" {
+					return authErr(fmt.Errorf("empty token argument"))
+				}
+				fmt.Fprintln(cmd.ErrOrStderr(), "warning: passing the token as an argument exposes it in process listings and shell history; pipe it on stdin instead")
+			} else {
+				token, err = readSecretFromStdin(cmd.InOrStdin())
+				if err != nil {
+					return authErr(err)
+				}
 			}
 
 			cfg, err := config.Load(flags.configPath)
